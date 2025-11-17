@@ -1,0 +1,92 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+
+export default function PriceDistribution({ finalPrices, strikePrice }) {
+  if (!finalPrices || finalPrices.length === 0) return null;
+
+  // Create histogram data
+  const min = Math.min(...finalPrices);
+  const max = Math.max(...finalPrices);
+  const numBins = 50;
+  const binSize = (max - min) / numBins;
+  
+  const histogram = Array(numBins).fill(0).map((_, i) => ({
+    price: min + (i + 0.5) * binSize,
+    count: 0,
+    rangeStart: min + i * binSize,
+    rangeEnd: min + (i + 1) * binSize
+  }));
+
+  finalPrices.forEach(price => {
+    const binIndex = Math.min(Math.floor((price - min) / binSize), numBins - 1);
+    histogram[binIndex].count++;
+  });
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-xl">
+          <p className="text-slate-300 text-sm">
+            Range: ${payload[0].payload.rangeStart.toFixed(2)} - ${payload[0].payload.rangeEnd.toFixed(2)}
+          </p>
+          <p className="text-white font-semibold">
+            Frequency: {payload[0].value}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700 shadow-2xl">
+      <CardHeader className="border-b border-slate-700">
+        <CardTitle className="text-2xl font-light text-white tracking-wide">
+          Final Price Distribution
+        </CardTitle>
+        <p className="text-slate-400 text-sm">
+          Distribution of simulated final stock prices
+        </p>
+      </CardHeader>
+      <CardContent className="p-6">
+        <ResponsiveContainer width="100%" height={400}>
+          <BarChart data={histogram}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
+            <XAxis
+              dataKey="price"
+              stroke="#94a3b8"
+              tick={{ fill: '#94a3b8' }}
+              tickFormatter={(value) => `$${value.toFixed(0)}`}
+              label={{ value: 'Final Stock Price ($)', position: 'insideBottom', offset: -5, fill: '#94a3b8' }}
+            />
+            <YAxis
+              stroke="#94a3b8"
+              tick={{ fill: '#94a3b8' }}
+              label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <ReferenceLine
+              x={strikePrice}
+              stroke="#D4AF37"
+              strokeDasharray="5 5"
+              strokeWidth={2}
+              label={{ value: 'Strike', fill: '#D4AF37', position: 'top' }}
+            />
+            <Bar
+              dataKey="count"
+              fill="url(#colorGradient)"
+              radius={[4, 4, 0, 0]}
+            />
+            <defs>
+              <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                <stop offset="100%" stopColor="#1e40af" stopOpacity={0.6}/>
+              </linearGradient>
+            </defs>
+          </BarChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+

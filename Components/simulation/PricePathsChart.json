@@ -1,0 +1,88 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+
+export default function PricePathsChart({ paths, strikePrice }) {
+  if (!paths || paths.length === 0) return null;
+
+  // Sample a subset of paths for visualization (max 50 paths)
+  const sampled = paths.length > 50
+    ? paths.filter((_, i) => i % Math.ceil(paths.length / 50) === 0)
+    : paths;
+
+  // Transform data for recharts
+  const chartData = [];
+  const numSteps = sampled[0]?.length || 0;
+  
+  for (let step = 0; step < numSteps; step++) {
+    const dataPoint = { step };
+    sampled.forEach((path, idx) => {
+      dataPoint[`path${idx}`] = path[step];
+    });
+    chartData.push(dataPoint);
+  }
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-xl">
+          <p className="text-slate-300 text-sm">
+            Step: {payload[0].payload.step}
+          </p>
+          <p className="text-white font-semibold">
+            Price: ${payload[0].value?.toFixed(2)}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700 shadow-2xl">
+      <CardHeader className="border-b border-slate-700">
+        <CardTitle className="text-2xl font-light text-white tracking-wide">
+          Simulated Price Paths
+        </CardTitle>
+        <p className="text-slate-400 text-sm">
+          Showing {sampled.length} of {paths.length} simulated paths
+        </p>
+      </CardHeader>
+      <CardContent className="p-6">
+        <ResponsiveContainer width="100%" height={400}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
+            <XAxis
+              dataKey="step"
+              stroke="#94a3b8"
+              tick={{ fill: '#94a3b8' }}
+            />
+            <YAxis
+              stroke="#94a3b8"
+              tick={{ fill: '#94a3b8' }}
+              label={{ value: 'Stock Price ($)', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <ReferenceLine
+              y={strikePrice}
+              stroke="#D4AF37"
+              strokeDasharray="5 5"
+              strokeWidth={2}
+              label={{ value: 'Strike', fill: '#D4AF37', position: 'right' }}
+            />
+            {sampled.map((_, idx) => (
+              <Line
+                key={idx}
+                type="monotone"
+                dataKey={`path${idx}`}
+                stroke={`rgba(59, 130, 246, ${0.2 + (idx / sampled.length) * 0.3})`}
+                strokeWidth={1}
+                dot={false}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+

@@ -1,0 +1,55 @@
+{
+  "name": "Simulation",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the simulation"
+    },
+    "stock_price": {
+      "type": "number",
+      "description": "Current stock price"
+    },
+    "strike_price": {
+      "type": "number",
+      "description": "Option strike price"
+    },
+    "volatility": {
+      "type": "number",
+      "description": "Annual volatility (as decimal)"
+    },
+    "risk_free_rate": {
+      "type": "number",
+      "description": "Risk-free rate (as decimal)"
+    },
+    "time_to_expiration": {
+      "type": "number",
+      "description": "Time to expiration in years"
+    },
+    "num_simulations": {
+      "type": "integer",
+      "description": "Number of Monte Carlo paths"
+    },
+    "call_value": {
+      "type": "number",
+      "description": "Calculated call option value"
+    },
+    "put_value": {
+      "type": "number",
+      "description": "Calculated put option value"
+    },
+    "results": {
+      "type": "object",
+      "description": "Full simulation results including Greeks"
+    }
+  },
+  "required": [
+    "name",
+    "stock_price",
+    "strike_price",
+    "volatility",
+    "risk_free_rate",
+    "time_to_expiration"
+  ]
+}
+

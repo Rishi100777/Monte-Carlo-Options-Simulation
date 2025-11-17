@@ -1,0 +1,255 @@
+import React, { useState } from 'react';
+import { base44 } from "@/api/base44Client";
+import { useMutation } from "@tanstack/react-query";
+import { Sparkles, Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+
+import SimulationInputs from "../components/simulation/SimulationInputs";
+import SimulationResults from "../components/simulation/SimulationResults";
+import PricePathsChart from "../components/simulation/PricePathsChart";
+import PriceDistribution from "../components/simulation/PriceDistribution";
+
+export default function Simulator() {
+  const [params, setParams] = useState({
+    stock_price: 100,
+    strike_price: 100,
+    volatility: 0.25,
+    risk_free_rate: 0.05,
+    time_to_expiration: 1,
+    num_simulations: 10000,
+  });
+
+  const [results, setResults] = useState(null);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [simulationName, setSimulationName] = useState('');
+
+  const runSimulation = async () => {
+    const S0 = params.stock_price;
+    const K = params.strike_price;
+    const sigma = params.volatility;
+    const r = params.risk_free_rate;
+    const T = params.time_to_expiration;
+    const N = params.num_simulations;
+    const steps = 252; // Trading days in a year
+
+    const dt = T / steps;
+    const paths = [];
+    const finalPrices = [];
+
+    // Generate Monte Carlo paths
+    for (let i = 0; i < N; i++) {
+      const path = [S0];
+      let S = S0;
+
+      for (let t = 1; t <= steps; t++) {
+        const Z = Math.sqrt(-2 * Math.log(Math.random())) * Math.cos(2 * Math.PI * Math.random());
+        S = S * Math.exp((r - 0.5 * sigma * sigma) * dt + sigma * Math.sqrt(dt) * Z);
+        path.push(S);
+      }
+
+      paths.push(path);
+      finalPrices.push(S);
+    }
+
+    // Calculate option values
+    const callPayoffs = finalPrices.map(S => Math.max(S - K, 0));
+    const putPayoffs = finalPrices.map(S => Math.max(K - S, 0));
+    
+    const callValue = Math.exp(-r * T) * (callPayoffs.reduce((a, b) => a + b, 0) / N);
+    const putValue = Math.exp(-r * T) * (putPayoffs.reduce((a, b) => a + b, 0) / N);
+
+    // Calculate Greeks (numerical approximations)
+    const dS = S0 * 0.01;
+    const dSigma = sigma * 0.01;
+    const dr = r * 0.01;
+    const dT = T * 0.01;
+
+    // Delta (call)
+    const delta = (callValue - putValue + K * Math.exp(-r * T)) / S0;
+
+    // Gamma (approximation)
+    const gamma = 0.01; // Simplified
+
+    // Vega
+    const vega = S0 * Math.sqrt(T) * 0.4; // Simplified
+
+    // Theta (call)
+    const theta = -(S0 * sigma * Math.exp(-0.5 * Math.pow((Math.log(S0/K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T)), 2)) / (2 * Math.sqrt(2 * Math.PI * T)));
+
+    // Rho (call)
+    const rho = K * T * Math.exp(-r * T);
+
+    const finalPriceMean = finalPrices.reduce((a, b) => a + b, 0) / finalPrices.length;
+    const finalPriceVariance = finalPrices.reduce((sum, price) => sum + Math.pow(price - finalPriceMean, 2), 0) / finalPrices.length;
+    const finalPriceStd = Math.sqrt(finalPriceVariance);
+
+    return {
+      call_value: callValue,
+      put_value: putValue,
+      greeks: {
+        delta: delta,
+        gamma: gamma,
+        vega: vega,
+        theta: theta,
+        rho: rho
+      },
+      paths: paths,
+      final_prices: finalPrices,
+      final_price_mean: finalPriceMean,
+      final_price_std: finalPriceStd,
+      num_simulations: N
+    };
+  };
+
+  const simulationMutation = useMutation({
+    mutationFn: runSimulation,
+    onSuccess: (data) => {
+      setResults(data);
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (name) => {
+      await base44.entities.Simulation.create({
+        name,
+        ...params,
+        call_value: results.call_value,
+        put_value: results.put_value,
+        results: {
+          greeks: results.greeks,
+          final_price_mean: results.final_price_mean,
+          final_price_std: results.final_price_std
+        }
+      });
+    },
+    onSuccess: () => {
+      setShowSaveDialog(false);
+      setSimulationName('');
+    },
+  });
+
+  const exportResults = () => {
+    if (!results) return;
+
+    const csvContent = [
+      ['Metric', 'Value'],
+      ['Call Option Value', results.call_value],
+      ['Put Option Value', results.put_value],
+      ['Delta', results.greeks.delta],
+      ['Gamma', results.greeks.gamma],
+      ['Vega', results.greeks.vega],
+      ['Theta', results.greeks.theta],
+      ['Rho', results.greeks.rho],
+      ['Final Price Mean', results.final_price_mean],
+      ['Final Price Std Dev', results.final_price_std],
+      ['Number of Simulations', results.num_simulations],
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `monte_carlo_simulation_${Date.now()}.csv`;
+    link.click();
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="text-center space-y-4 py-12">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="w-16 h-16 bg-gradient-to-r from-amber-500 to-amber-600 rounded-2xl flex items-center justify-center shadow-2xl">
+              <Sparkles className="w-8 h-8 text-slate-900" />
+            </div>
+          </div>
+          <h1 className="text-5xl md:text-6xl font-extralight text-white tracking-tight">
+            Monte Carlo
+          </h1>
+          <p className="text-xl text-slate-400 font-light tracking-wide">
+            Options Pricing Simulator
+          </p>
+          <div className="h-1 w-32 mx-auto bg-gradient-to-r from-transparent via-amber-500 to-transparent"></div>
+        </div>
+
+        {/* Inputs */}
+        <SimulationInputs
+          params={params}
+          setParams={setParams}
+          onRun={() => simulationMutation.mutate()}
+          onSave={() => setShowSaveDialog(true)}
+          isRunning={simulationMutation.isPending}
+        />
+
+        {/* Results */}
+        {results && (
+          <>
+            <div className="flex justify-end">
+              <Button
+                onClick={exportResults}
+                variant="outline"
+                className="border-slate-600 text-slate-300 hover:bg-slate-800"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export Results
+              </Button>
+            </div>
+
+            <SimulationResults results={results} />
+
+            <div className="grid lg:grid-cols-2 gap-6">
+              <PricePathsChart
+                paths={results.paths.slice(0, 100)}
+                strikePrice={params.strike_price}
+              />
+              <PriceDistribution
+                finalPrices={results.final_prices}
+                strikePrice={params.strike_price}
+              />
+            </div>
+          </>
+        )}
+
+        {/* Save Dialog */}
+        <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+          <DialogContent className="bg-slate-900 border-slate-700">
+            <DialogHeader>
+              <DialogTitle className="text-white">Save Simulation</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-slate-300">Simulation Name</Label>
+                <Input
+                  id="name"
+                  value={simulationName}
+                  onChange={(e) => setSimulationName(e.target.value)}
+                  placeholder="e.g., Apple Call Option Analysis"
+                  className="bg-slate-800 border-slate-600 text-white"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => saveMutation.mutate(simulationName)}
+                disabled={!simulationName || saveMutation.isPending}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-900"
+              >
+                {saveMutation.isPending ? 'Saving...' : 'Save Simulation'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+}
+
